@@ -1,0 +1,55 @@
+services:
+  bridge:
+    image: whatsapp-mcp/bridge:latest
+    build: ./whatsapp-bridge
+    container_name: whatsapp-bridge
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    volumes:
+      - whatsapp_data:/data
+    networks:
+      - whatsapp
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  mcp:
+    image: whatsapp-mcp/server:latest
+    build: ./whatsapp-mcp-server
+    container_name: whatsapp-mcp
+    restart: unless-stopped
+    volumes:
+      - whatsapp_data:/data
+    networks:
+      - whatsapp
+    working_dir: /data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    depends_on:
+      - bridge
+
+volumes:
+  whatsapp_data:
+
+networks:
+  whatsapp:
+    internal: false
