@@ -131,6 +131,11 @@ func NewMessageStore() (*MessageStore, error) {
 		return nil, fmt.Errorf("failed to create tables: %v", err)
 	}
 
+	if _, err = db.Exec(`ALTER TABLE messages ADD COLUMN quoted_content TEXT`); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+		db.Close()
+		return nil, fmt.Errorf("failed to add quoted_content column: %v", err)
+	}
+
 	return &MessageStore{db: db}, nil
 }
 
@@ -163,6 +168,18 @@ func (store *MessageStore) StoreMessage(id, chatJID, sender, content string, tim
 		id, chatJID, sender, content, timestamp, isFromMe, mediaType, filename, url, mediaKey, fileSHA256, fileEncSHA256, fileLength,
 	)
 	return err
+}
+
+func (store *MessageStore) StoreQuotedContent(id, chatJID, quoted string) error {
+	_, err := store.db.Exec(`UPDATE messages SET quoted_content = ? WHERE id = ? AND chat_jid = ?`, quoted, id, chatJID)
+	return err
+}
+
+func extractQuotedText(msg *waProto.Message) string {
+	if msg == nil {
+		return ""
+	}
+	return extractTextContent(msg.GetExtendedTextMessage().GetContextInfo().GetQuotedMessage())
 }
 
 // Get messages from a chat
@@ -494,6 +511,14 @@ func handleMessage(client *whatsmeow.Client, messageStore *MessageStore, msg *ev
 		fileEncSHA256,
 		fileLength,
 	)
+
+	if err == nil {
+		if quoted := extractQuotedText(msg.Message); quoted != "" {
+			if qerr := messageStore.StoreQuotedContent(msg.Info.ID, chatJID, quoted); qerr != nil {
+				logger.Warnf("Failed to store quoted content: %v", qerr)
+			}
+		}
+	}
 
 	if err != nil {
 		logger.Warnf("Failed to store message: %v", err)

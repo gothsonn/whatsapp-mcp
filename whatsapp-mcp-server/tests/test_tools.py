@@ -23,7 +23,7 @@ def server(tmp_path, monkeypatch):
         CREATE TABLE chats (jid TEXT PRIMARY KEY, name TEXT, last_message_time TIMESTAMP);
         CREATE TABLE messages (id TEXT, chat_jid TEXT, sender TEXT, content TEXT, timestamp TIMESTAMP,
             is_from_me BOOLEAN, media_type TEXT, filename TEXT, url TEXT, media_key BLOB,
-            file_sha256 BLOB, file_enc_sha256 BLOB, file_length INTEGER, PRIMARY KEY (id, chat_jid));
+            file_sha256 BLOB, file_enc_sha256 BLOB, file_length INTEGER, quoted_content TEXT, PRIMARY KEY (id, chat_jid));
         """
     )
     conn.executemany(
@@ -40,8 +40,8 @@ def server(tmp_path, monkeypatch):
     )
     conn.execute("INSERT INTO chats VALUES (?, ?, ?)", (LID, None, "2026-11-10 11:00:00"))
     conn.execute(
-        "INSERT INTO messages (id, chat_jid, sender, content, timestamp, is_from_me) VALUES (?,?,?,?,?,?)",
-        ("D", LID, "77001", "ok pode seguir", "2026-11-10 11:00:00", 0),
+        "INSERT INTO messages (id, chat_jid, sender, content, timestamp, is_from_me, quoted_content) VALUES (?,?,?,?,?,?,?)",
+        ("D", LID, "77001", "ok pode seguir", "2026-11-10 11:00:00", 0, "[BBTS #46241] review"),
     )
     conn.commit()
     conn.close()
@@ -82,6 +82,7 @@ def test_list_messages_since_is_oldest_first_and_inclusive(server):
 def test_list_messages_since_by_phone_resolves_lid(server):
     msgs = call(server, "list_messages_since", {"after": "2026-11-10T00:00:00", "phone": "+55 11 77777-0000"})
     assert [(m["id"], m["chat_jid"], m["is_from_me"]) for m in msgs] == [("D", LID, False)]
+    assert msgs[0]["quoted_content"] == "[BBTS #46241] review"
 
 
 def test_list_messages_since_by_phone_without_lid_uses_phone_jid(server):

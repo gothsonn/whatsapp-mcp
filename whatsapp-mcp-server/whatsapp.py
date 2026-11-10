@@ -20,6 +20,7 @@ class Message:
     id: str
     chat_name: Optional[str] = None
     media_type: Optional[str] = None
+    quoted_content: Optional[str] = None
 
 @dataclass
 class Chat:
@@ -257,7 +258,7 @@ def list_messages_since(
         raise ValueError(f"Invalid date format for 'after': {after}. Please use ISO-8601 format.")
     sql = [
         "SELECT messages.timestamp, messages.sender, chats.name, messages.content, messages.is_from_me,",
-        "chats.jid, messages.id, messages.media_type FROM messages",
+        "chats.jid, messages.id, messages.media_type, messages.quoted_content FROM messages",
         "JOIN chats ON messages.chat_jid = chats.jid",
         "WHERE messages.timestamp >= ?",
     ]
@@ -286,6 +287,7 @@ def list_messages_since(
             chat_jid=row[5],
             id=row[6],
             media_type=row[7],
+            quoted_content=row[8],
         )
         for row in rows
     ]
@@ -302,6 +304,7 @@ def message_to_dict(message: Message) -> dict:
         "is_from_me": bool(message.is_from_me),
         "content": message.content,
         "media_type": message.media_type,
+        "quoted_content": message.quoted_content,
     }
 
 
