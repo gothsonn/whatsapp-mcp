@@ -1,5 +1,8 @@
+import hmac
+import os
 from typing import List, Dict, Any, Optional
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from whatsapp import (
     search_contacts as whatsapp_search_contacts,
     list_messages as whatsapp_list_messages,
@@ -15,8 +18,17 @@ from whatsapp import (
     download_media as whatsapp_download_media
 )
 
-# Initialize FastMCP server
-mcp = FastMCP("whatsapp")
+mcp = FastMCP(
+    "whatsapp",
+    host=os.getenv("MCP_HOST", "127.0.0.1"),
+    port=int(os.getenv("MCP_PORT", "8000")),
+    stateless_http=True,
+    transport_security=TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=[h for h in os.getenv("MCP_ALLOWED_HOSTS", "127.0.0.1:*,localhost:*").split(",") if h],
+        allowed_origins=[],
+    ),
+)
 
 @mcp.tool()
 def search_contacts(query: str) -> List[Dict[str, Any]]:
@@ -246,6 +258,34 @@ def download_media(message_id: str, chat_jid: str) -> Dict[str, Any]:
             "message": "Failed to download media"
         }
 
+def bearer_protected(app, token: str):
+    expected = f"Bearer {token}".encode()
+
+    async def guarded(scope, receive, send):
+        if scope["type"] == "http":
+            supplied = dict(scope["headers"]).get(b"authorization", b"")
+            if not hmac.compare_digest(supplied, expected):
+                await send({"type": "http.response.start", "status": 401, "headers": [(b"content-type", b"text/plain")]})
+                await send({"type": "http.response.body", "body": b"unauthorized"})
+                return
+        await app(scope, receive, send)
+
+    return guarded
+
+
 if __name__ == "__main__":
-    # Initialize and run the server
-    mcp.run(transport='stdio')
+    if os.getenv("MCP_TRANSPORT", "stdio") == "http":
+        import uvicorn
+
+        token = os.environ["MCP_BEARER_TOKEN"]
+        if len(token) < 32:
+            raise SystemExit("MCP_BEARER_TOKEN must have at least 32 characters")
+        uvicorn.run(
+            bearer_protected(mcp.streamable_http_app(), token),
+            host=mcp.settings.host,
+            port=mcp.settings.port,
+            log_level="warning",
+            access_log=False,
+        )
+    else:
+        mcp.run(transport="stdio")

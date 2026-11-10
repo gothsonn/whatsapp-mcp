@@ -11,5 +11,8 @@ RUN chown -R mcp /app
 USER mcp
 ENV MESSAGES_DB_PATH=/data/store/messages.db \
     WHATSAPP_API_BASE_URL=http://bridge:8080/api \
-    UV_NO_SYNC=1
-CMD ["sleep", "infinity"]
+    UV_NO_SYNC=1 \
+    MCP_TRANSPORT=http \
+    MCP_HOST=0.0.0.0 \
+    MCP_PORT=8000
+CMD ["/app/.venv/bin/python", "/app/main.py"]

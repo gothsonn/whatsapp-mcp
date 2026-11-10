@@ -34,6 +34,10 @@ services:
     networks:
       - whatsapp
     working_dir: /data
+    env_file:
+      - ./mcp.env
+    ports:
+      - "127.0.0.1:8765:8000"
     security_opt:
       - no-new-privileges:true
     cap_drop:
