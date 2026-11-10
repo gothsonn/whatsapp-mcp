@@ -12,6 +12,10 @@ from whatsapp import (
     get_contact_chats as whatsapp_get_contact_chats,
     get_last_interaction as whatsapp_get_last_interaction,
     get_message_context as whatsapp_get_message_context,
+    list_messages_since as whatsapp_list_messages_since,
+    message_to_dict,
+    chat_to_dict,
+    contact_to_dict,
     send_message as whatsapp_send_message,
     send_file as whatsapp_send_file,
     send_audio_message as whatsapp_audio_voice_message,
@@ -37,8 +41,7 @@ def search_contacts(query: str) -> List[Dict[str, Any]]:
     Args:
         query: Search term to match against contact names or phone numbers
     """
-    contacts = whatsapp_search_contacts(query)
-    return contacts
+    return [contact_to_dict(c) for c in whatsapp_search_contacts(query)]
 
 @mcp.tool()
 def list_messages(
@@ -79,7 +82,7 @@ def list_messages(
         context_before=context_before,
         context_after=context_after
     )
-    return messages
+    return [message_to_dict(m) for m in messages]
 
 @mcp.tool()
 def list_chats(
@@ -105,10 +108,10 @@ def list_chats(
         include_last_message=include_last_message,
         sort_by=sort_by
     )
-    return chats
+    return [chat_to_dict(c) for c in chats]
 
 @mcp.tool()
-def get_chat(chat_jid: str, include_last_message: bool = True) -> Dict[str, Any]:
+def get_chat(chat_jid: str, include_last_message: bool = True) -> Optional[Dict[str, Any]]:
     """Get WhatsApp chat metadata by JID.
     
     Args:
@@ -116,17 +119,17 @@ def get_chat(chat_jid: str, include_last_message: bool = True) -> Dict[str, Any]
         include_last_message: Whether to include the last message (default True)
     """
     chat = whatsapp_get_chat(chat_jid, include_last_message)
-    return chat
+    return chat_to_dict(chat) if chat else None
 
 @mcp.tool()
-def get_direct_chat_by_contact(sender_phone_number: str) -> Dict[str, Any]:
+def get_direct_chat_by_contact(sender_phone_number: str) -> Optional[Dict[str, Any]]:
     """Get WhatsApp chat metadata by sender phone number.
     
     Args:
         sender_phone_number: The phone number to search for
     """
     chat = whatsapp_get_direct_chat_by_contact(sender_phone_number)
-    return chat
+    return chat_to_dict(chat) if chat else None
 
 @mcp.tool()
 def get_contact_chats(jid: str, limit: int = 20, page: int = 0) -> List[Dict[str, Any]]:
@@ -137,11 +140,10 @@ def get_contact_chats(jid: str, limit: int = 20, page: int = 0) -> List[Dict[str
         limit: Maximum number of chats to return (default 20)
         page: Page number for pagination (default 0)
     """
-    chats = whatsapp_get_contact_chats(jid, limit, page)
-    return chats
+    return [chat_to_dict(c) for c in whatsapp_get_contact_chats(jid, limit, page)]
 
 @mcp.tool()
-def get_last_interaction(jid: str) -> str:
+def get_last_interaction(jid: str) -> Optional[str]:
     """Get most recent WhatsApp message involving the contact.
     
     Args:
@@ -164,7 +166,31 @@ def get_message_context(
         after: Number of messages to include after the target message (default 5)
     """
     context = whatsapp_get_message_context(message_id, before, after)
-    return context
+    return {
+        "message": message_to_dict(context.message),
+        "before": [message_to_dict(m) for m in context.before],
+        "after": [message_to_dict(m) for m in context.after],
+    }
+
+@mcp.tool()
+def list_messages_since(
+    after: str,
+    chat_jid: Optional[str] = None,
+    limit: int = 100,
+    phone: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """Get WhatsApp messages with timestamp at or after a given instant, oldest first.
+
+    Designed for polling: keep the newest timestamp seen as the next `after` and
+    de-duplicate by message `id`, since messages from the same second are returned again.
+
+    Args:
+        after: ISO-8601 instant in UTC (the bridge stores timestamps in UTC)
+        chat_jid: Optional chat JID to restrict the results to one chat
+        limit: Maximum number of messages to return (1-500, default 100)
+        phone: Optional phone number; restricts to the direct chat with it, resolving its LID
+    """
+    return [message_to_dict(m) for m in whatsapp_list_messages_since(after, chat_jid, limit, phone)]
 
 @mcp.tool()
 def send_message(

@@ -210,17 +210,115 @@ def list_messages(
                 messages_with_context.append(context.message)
                 messages_with_context.extend(context.after)
             
-            return format_messages_list(messages_with_context, show_chat_info=True)
-            
-        # Format and display messages without context
-        return format_messages_list(result, show_chat_info=True)    
-        
+            return messages_with_context
+
+        return result
+
     except sqlite3.Error as e:
         print(f"Database error: {e}")
         return []
     finally:
         if 'conn' in locals():
             conn.close()
+
+
+WHATSMEOW_DB_PATH = os.environ.get('WHATSMEOW_DB_PATH', os.path.join(os.path.dirname(MESSAGES_DB_PATH), 'whatsapp.db'))
+
+
+def jids_for_phone(phone: str) -> List[str]:
+    """Chat JIDs that may hold a direct chat with `phone`: the phone JID and its LID, when known."""
+    digits = "".join(ch for ch in phone if ch.isdigit())
+    if not digits:
+        raise ValueError("phone must contain digits")
+    jids = [f"{digits}@s.whatsapp.net"]
+    if os.path.exists(WHATSMEOW_DB_PATH):
+        conn = sqlite3.connect(f"file:{WHATSMEOW_DB_PATH}?mode=ro", uri=True)
+        try:
+            row = conn.execute("SELECT lid FROM whatsmeow_lid_map WHERE pn = ?", (digits,)).fetchone()
+        except sqlite3.Error:
+            row = None
+        finally:
+            conn.close()
+        if row and row[0]:
+            jids.append(f"{row[0]}@lid")
+    return jids
+
+
+def list_messages_since(
+    after: str,
+    chat_jid: Optional[str] = None,
+    limit: int = 100,
+    phone: Optional[str] = None
+) -> List[Message]:
+    """Messages with timestamp at or after `after`, oldest first."""
+    try:
+        since = datetime.fromisoformat(after)
+    except ValueError:
+        raise ValueError(f"Invalid date format for 'after': {after}. Please use ISO-8601 format.")
+    sql = [
+        "SELECT messages.timestamp, messages.sender, chats.name, messages.content, messages.is_from_me,",
+        "chats.jid, messages.id, messages.media_type FROM messages",
+        "JOIN chats ON messages.chat_jid = chats.jid",
+        "WHERE messages.timestamp >= ?",
+    ]
+    params: list = [since.strftime("%Y-%m-%d %H:%M:%S")]
+    if chat_jid:
+        sql.append("AND messages.chat_jid = ?")
+        params.append(chat_jid)
+    if phone:
+        jids = jids_for_phone(phone)
+        sql.append(f"AND messages.chat_jid IN ({','.join('?' * len(jids))})")
+        params.extend(jids)
+    sql.append("ORDER BY messages.timestamp ASC, messages.id ASC LIMIT ?")
+    params.append(max(1, min(limit, 500)))
+    conn = sqlite3.connect(MESSAGES_DB_PATH)
+    try:
+        rows = conn.execute(" ".join(sql), tuple(params)).fetchall()
+    finally:
+        conn.close()
+    return [
+        Message(
+            timestamp=datetime.fromisoformat(row[0]),
+            sender=row[1],
+            chat_name=row[2],
+            content=row[3],
+            is_from_me=bool(row[4]),
+            chat_jid=row[5],
+            id=row[6],
+            media_type=row[7],
+        )
+        for row in rows
+    ]
+
+
+def message_to_dict(message: Message) -> dict:
+    return {
+        "id": message.id,
+        "chat_jid": message.chat_jid,
+        "chat_name": message.chat_name,
+        "timestamp": message.timestamp.isoformat(),
+        "sender": message.sender,
+        "sender_name": "Me" if message.is_from_me else get_sender_name(message.sender),
+        "is_from_me": bool(message.is_from_me),
+        "content": message.content,
+        "media_type": message.media_type,
+    }
+
+
+def chat_to_dict(chat: Chat) -> dict:
+    return {
+        "jid": chat.jid,
+        "name": chat.name,
+        "is_group": chat.is_group,
+        "last_message_time": chat.last_message_time.isoformat() if chat.last_message_time else None,
+        "last_message": chat.last_message,
+        "last_sender": chat.last_sender,
+        "last_is_from_me": chat.last_is_from_me,
+    }
+
+
+def contact_to_dict(contact: Contact) -> dict:
+    return {"phone_number": contact.phone_number, "name": contact.name, "jid": contact.jid}
 
 
 def get_message_context(
