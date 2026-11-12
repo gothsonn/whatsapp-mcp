@@ -11,6 +11,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --uid 10001 --create-home --home-dir /data bridge \
     && install -d -m 0700 -o bridge -g bridge /data/store /data/outbox \
+    && install -d -m 0750 -o bridge -g bridge /data/media \
     && chmod 0700 /data
 COPY --from=build /out/whatsapp-bridge /usr/local/bin/whatsapp-bridge
 USER bridge

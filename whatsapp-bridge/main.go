@@ -628,7 +628,7 @@ func downloadMedia(client *whatsmeow.Client, messageStore *MessageStore, message
 	var err error
 
 	// First, check if we already have this file
-	chatDir := fmt.Sprintf("store/%s", strings.ReplaceAll(chatJID, ":", "_"))
+	chatDir := fmt.Sprintf("media/%s", strings.ReplaceAll(chatJID, ":", "_"))
 	localPath := ""
 
 	// Get media info from the database
@@ -652,7 +652,7 @@ func downloadMedia(client *whatsmeow.Client, messageStore *MessageStore, message
 	}
 
 	// Create directory for the chat if it doesn't exist
-	if err := os.MkdirAll(chatDir, 0700); err != nil {
+	if err := os.MkdirAll(chatDir, 0750); err != nil {
 		return false, "", "", "", fmt.Errorf("failed to create chat directory: %v", err)
 	}
 
@@ -713,7 +713,7 @@ func downloadMedia(client *whatsmeow.Client, messageStore *MessageStore, message
 	}
 
 	// Save the downloaded media to file
-	if err := os.WriteFile(localPath, mediaData, 0600); err != nil {
+	if err := os.WriteFile(localPath, mediaData, 0640); err != nil {
 		return false, "", "", "", fmt.Errorf("failed to save media file: %v", err)
 	}
 
